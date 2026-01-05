@@ -16,8 +16,8 @@ RUN set -eux; \
   tar -C /usr/local -xzf /tmp/go.tgz; \
   rm -f /tmp/go.tgz
 
-RUN tee /etc/profile.d/go.sh >/dev/null <<'EOF'\n\
-export GOPATH="/home/coder/go"\n\
-export PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"\n\
-export GOTOOLCHAIN=auto\n\
+RUN tee /etc/profile.d/go.sh >/dev/null <<'EOF'
+export GOPATH="/home/coder/go"
+export PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"
+export GOTOOLCHAIN=auto
 EOF

@@ -21,10 +21,10 @@ RUN set -eux; \
   make -j"$(nproc)" install; \
   rm -rf /tmp/build
 
-RUN tee /etc/profile.d/rocksdb-cgo.sh >/dev/null <<'EOF'\n\
-export ROCKSDB_VERSION="10.5.1"\n\
-export ROCKSDB_PREFIX="/opt/rocksdb/${ROCKSDB_VERSION}"\n\
-export LD_LIBRARY_PATH="$ROCKSDB_PREFIX/lib:${LD_LIBRARY_PATH:-}"\n\
-export CGO_CFLAGS="-I$ROCKSDB_PREFIX/include"\n\
-export CGO_LDFLAGS="-L$ROCKSDB_PREFIX/lib -lrocksdb -lstdc++ -lm -lz -lsnappy -llz4 -lzstd -lbz2"\n\
+RUN tee /etc/profile.d/rocksdb-cgo.sh >/dev/null <<'EOF'
+export ROCKSDB_VERSION="10.5.1"
+export ROCKSDB_PREFIX="/opt/rocksdb/${ROCKSDB_VERSION}"
+export LD_LIBRARY_PATH="$ROCKSDB_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+export CGO_CFLAGS="-I$ROCKSDB_PREFIX/include"
+export CGO_LDFLAGS="-L$ROCKSDB_PREFIX/lib -lrocksdb -lstdc++ -lm -lz -lsnappy -llz4 -lzstd -lbz2"
 EOF
