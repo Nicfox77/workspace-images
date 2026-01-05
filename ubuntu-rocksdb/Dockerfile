@@ -8,6 +8,7 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get update -y && \
     apt-get install -y --no-install-recommends \
       libsnappy-dev liblz4-dev libzstd-dev zlib1g-dev libbz2-dev \
+      libgflags-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
