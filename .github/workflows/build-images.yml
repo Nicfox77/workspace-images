@@ -1,0 +1,171 @@
+name: Build & Push Workspace Images
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      build_all:
+        description: "Build all images (ignores change detection)"
+        type: boolean
+        default: false
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      any: ${{ steps.set-matrix.outputs.any }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute image folders (Dockerfile present) + changed folders
+        id: set-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Find all folders at repo root containing a Dockerfile
+          mapfile -t ALL_DIRS < <(find . -maxdepth 2 -mindepth 2 -type f -name Dockerfile -printf '%h\n' \
+            | sed 's|^\./||' \
+            | awk -F/ '{print $1}' \
+            | sort -u)
+
+          if [ ${#ALL_DIRS[@]} -eq 0 ]; then
+            echo "No Dockerfiles found."
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          EVENT="${{ github.event_name }}"
+          BUILD_ALL_INPUT="${{ github.event.inputs.build_all || 'false' }}"
+
+          # Decide whether to build all
+          BUILD_ALL="false"
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$BUILD_ALL_INPUT" = "true" ]; then
+            BUILD_ALL="true"
+          fi
+          if [ "$EVENT" = "release" ]; then
+            BUILD_ALL="true"
+          fi
+
+          if [ "$BUILD_ALL" = "true" ]; then
+            CHANGED_DIRS=("${ALL_DIRS[@]}")
+          else
+            # Determine diff base
+            # For pushes, compare the previous commit to this commit.
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.sha }}"
+
+            # If BEFORE is empty (rare), fallback to previous commit
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE="$(git rev-parse "${AFTER}^" 2>/dev/null || true)"
+            fi
+
+            if [ -z "$BEFORE" ]; then
+              echo "Could not determine BEFORE commit; building all."
+              CHANGED_DIRS=("${ALL_DIRS[@]}")
+            else
+              mapfile -t CHANGED_FILES < <(git diff --name-only "$BEFORE" "$AFTER")
+
+              # Get top-level folders that changed
+              mapfile -t CHANGED_TOP < <(printf "%s\n" "${CHANGED_FILES[@]}" \
+                | awk -F/ 'NF>1 {print $1}' \
+                | sort -u)
+
+              # Keep only those folders that are actual image folders (have a Dockerfile)
+              CHANGED_DIRS=()
+              for d in "${CHANGED_TOP[@]}"; do
+                if [ -f "$d/Dockerfile" ]; then
+                  CHANGED_DIRS+=("$d")
+                fi
+              done
+            fi
+          fi
+
+          if [ ${#CHANGED_DIRS[@]} -eq 0 ]; then
+            echo "No image folders changed; nothing to build."
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Build JSON matrix: [{"image":"folder","context":"folder"}...]
+          JSON='{"include":['
+          first=1
+          for d in "${CHANGED_DIRS[@]}"; do
+            if [ $first -eq 0 ]; then JSON+=','; fi
+            first=0
+            JSON+="{\"image\":\"$d\",\"context\":\"$d\"}"
+          done
+          JSON+=']}'
+
+          echo "Selected images: ${CHANGED_DIRS[*]}"
+          echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+          echo "any=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build selected images in order
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          REPO_LC="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          PREFIX="ghcr.io/${OWNER_LC}/${REPO_LC}"
+
+          # This is the JSON produced by detect (example)
+          FOLDERS='${{ needs.detect.outputs.folders }}'
+
+          # Convert JSON array -> bash array
+          mapfile -t LIST < <(echo "$FOLDERS" | jq -r '.[]')
+
+          # Build base images first (convention: name contains "-base", plus special-case ubuntu-dev-base)
+          BASES=()
+          REST=()
+          for f in "${LIST[@]}"; do
+            if [[ "$f" == *"-base"* ]] || [[ "$f" == "ubuntu-dev-base" ]]; then
+              BASES+=("$f")
+            else
+              REST+=("$f")
+            fi
+          done
+
+          ORDER=("${BASES[@]}" "${REST[@]}")
+
+          echo "Build order: ${ORDER[*]}"
+
+          for f in "${ORDER[@]}"; do
+            IMAGE="${PREFIX}/${f}"
+            echo "Building ${IMAGE}:latest from ./${f}"
+
+            docker buildx build \
+              --push \
+              --tag "${IMAGE}:latest" \
+              --tag "${IMAGE}:sha-${GITHUB_SHA}" \
+              "./${f}"
+          done
