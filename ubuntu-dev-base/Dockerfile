@@ -9,7 +9,6 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
       build-essential pkg-config tar cmake \
       clang lld lldb gdb ninja-build ccache \
       openssh-client \
-      docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 ARG GO_VERSION=1.23.4
