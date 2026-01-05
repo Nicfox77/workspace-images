@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/Nicfox77/workspace-images/ubuntu-dev-base:24.04
+ARG BASE_IMAGE=ghcr.io/Nicfox77/workspace-images/ubuntu-dev-base:latest
 FROM ${BASE_IMAGE}
 ARG ROCKS_VERSION=10.5.1
 

@@ -20,39 +20,42 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      any: ${{ steps.set-matrix.outputs.any }}
+      folders: ${{ steps.detect.outputs.folders }}
+      any: ${{ steps.detect.outputs.any }}
+      build_all: ${{ steps.detect.outputs.build_all }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Compute image folders (Dockerfile present) + changed folders
-        id: set-matrix
+      - name: Detect image folders (Dockerfile present) + changed folders
+        id: detect
         shell: bash
         run: |
           set -euo pipefail
 
           # Find all folders at repo root containing a Dockerfile
-          mapfile -t ALL_DIRS < <(find . -maxdepth 2 -mindepth 2 -type f -name Dockerfile -printf '%h\n' \
-            | sed 's|^\./||' \
-            | awk -F/ '{print $1}' \
-            | sort -u)
+          mapfile -t ALL_DIRS < <(
+            find . -maxdepth 2 -mindepth 2 -type f -name Dockerfile -printf '%h\n' \
+              | sed 's|^\./||' \
+              | awk -F/ '{print $1}' \
+              | sort -u
+          )
 
           if [ ${#ALL_DIRS[@]} -eq 0 ]; then
             echo "No Dockerfiles found."
-            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            echo 'folders=[]' >> "$GITHUB_OUTPUT"
             echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "build_all=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           EVENT="${{ github.event_name }}"
-          BUILD_ALL_INPUT="${{ github.event.inputs.build_all || 'false' }}"
+          INPUT_BUILD_ALL="${{ github.event.inputs.build_all || 'false' }}"
 
-          # Decide whether to build all
           BUILD_ALL="false"
-          if [ "$EVENT" = "workflow_dispatch" ] && [ "$BUILD_ALL_INPUT" = "true" ]; then
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$INPUT_BUILD_ALL" = "true" ]; then
             BUILD_ALL="true"
           fi
           if [ "$EVENT" = "release" ]; then
@@ -60,112 +63,124 @@ jobs:
           fi
 
           if [ "$BUILD_ALL" = "true" ]; then
-            CHANGED_DIRS=("${ALL_DIRS[@]}")
+            SELECTED=("${ALL_DIRS[@]}")
           else
-            # Determine diff base
-            # For pushes, compare the previous commit to this commit.
             BEFORE="${{ github.event.before }}"
             AFTER="${{ github.sha }}"
 
-            # If BEFORE is empty (rare), fallback to previous commit
+            # Fallback if BEFORE is missing
             if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
               BEFORE="$(git rev-parse "${AFTER}^" 2>/dev/null || true)"
             fi
 
             if [ -z "$BEFORE" ]; then
               echo "Could not determine BEFORE commit; building all."
-              CHANGED_DIRS=("${ALL_DIRS[@]}")
+              SELECTED=("${ALL_DIRS[@]}")
             else
               mapfile -t CHANGED_FILES < <(git diff --name-only "$BEFORE" "$AFTER")
+              mapfile -t CHANGED_TOP < <(printf "%s\n" "${CHANGED_FILES[@]}" | awk -F/ 'NF>1 {print $1}' | sort -u)
 
-              # Get top-level folders that changed
-              mapfile -t CHANGED_TOP < <(printf "%s\n" "${CHANGED_FILES[@]}" \
-                | awk -F/ 'NF>1 {print $1}' \
-                | sort -u)
-
-              # Keep only those folders that are actual image folders (have a Dockerfile)
-              CHANGED_DIRS=()
+              SELECTED=()
               for d in "${CHANGED_TOP[@]}"; do
                 if [ -f "$d/Dockerfile" ]; then
-                  CHANGED_DIRS+=("$d")
+                  SELECTED+=("$d")
                 fi
               done
             fi
           fi
 
-          if [ ${#CHANGED_DIRS[@]} -eq 0 ]; then
-            echo "No image folders changed; nothing to build."
-            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+          if [ ${#SELECTED[@]} -eq 0 ]; then
+            echo "No image folders selected; nothing to build."
+            echo 'folders=[]' >> "$GITHUB_OUTPUT"
             echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "build_all=$BUILD_ALL" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Build JSON matrix: [{"image":"folder","context":"folder"}...]
-          JSON='{"include":['
+          # Output JSON array
+          JSON='['
           first=1
-          for d in "${CHANGED_DIRS[@]}"; do
+          for d in "${SELECTED[@]}"; do
             if [ $first -eq 0 ]; then JSON+=','; fi
             first=0
-            JSON+="{\"image\":\"$d\",\"context\":\"$d\"}"
+            JSON+="\"$d\""
           done
-          JSON+=']}'
+          JSON+=']'
 
-          echo "Selected images: ${CHANGED_DIRS[*]}"
-          echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+          echo "Selected folders: ${SELECTED[*]}"
+          echo "folders=$JSON" >> "$GITHUB_OUTPUT"
           echo "any=true" >> "$GITHUB_OUTPUT"
+          echo "build_all=$BUILD_ALL" >> "$GITHUB_OUTPUT"
 
   build:
     needs: detect
     if: needs.detect.outputs.any == 'true'
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build selected images in order
+      - name: Build selected images (base first) and push to GHCR
         shell: bash
         run: |
           set -euo pipefail
 
           OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          REPO_LC="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          REPO_LC="workspace-images"
           PREFIX="ghcr.io/${OWNER_LC}/${REPO_LC}"
 
-          # This is the JSON produced by detect (example)
+          # Parse selected folders
           FOLDERS='${{ needs.detect.outputs.folders }}'
-
-          # Convert JSON array -> bash array
           mapfile -t LIST < <(echo "$FOLDERS" | jq -r '.[]')
 
-          # Build base images first (convention: name contains "-base", plus special-case ubuntu-dev-base)
+          # Order: base images first (convention: ends with -base or equals ubuntu-dev-base)
           BASES=()
           REST=()
           for f in "${LIST[@]}"; do
-            if [[ "$f" == *"-base"* ]] || [[ "$f" == "ubuntu-dev-base" ]]; then
+            if [[ "$f" == *"-base" ]] || [[ "$f" == "ubuntu-dev-base" ]]; then
               BASES+=("$f")
             else
               REST+=("$f")
             fi
           done
-
           ORDER=("${BASES[@]}" "${REST[@]}")
 
           echo "Build order: ${ORDER[*]}"
 
+          # Tagging strategy:
+          # - latest always
+          # - sha-<commit> always
+          # - if this is a release, also add the release tag (e.g. v1.2.3)
+          RELEASE_TAG=""
+          if [ "${{ github.event_name }}" = "release" ]; then
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+          fi
+
           for f in "${ORDER[@]}"; do
             IMAGE="${PREFIX}/${f}"
-            echo "Building ${IMAGE}:latest from ./${f}"
+            echo "== Building ${IMAGE} from ./${f} =="
+
+            TAG_ARGS=(--tag "${IMAGE}:latest" --tag "${IMAGE}:sha-${GITHUB_SHA}")
+
+            if [ -n "$RELEASE_TAG" ]; then
+              TAG_ARGS+=(--tag "${IMAGE}:${RELEASE_TAG}")
+            fi
 
             docker buildx build \
               --push \
-              --tag "${IMAGE}:latest" \
-              --tag "${IMAGE}:sha-${GITHUB_SHA}" \
+              "${TAG_ARGS[@]}" \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
               "./${f}"
           done
