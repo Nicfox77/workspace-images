@@ -3,7 +3,7 @@ FROM ghcr.io/nicfox77/workspace-images/ubuntu-dev-base:latest
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
-ARG ROCKS_VERSION=10.6.2
+ARG ROCKS_VERSION=10.9.1
 ENV ROCKS_VERSION=${ROCKS_VERSION}
 ENV ROCKSDB_PREFIX=/opt/rocksdb/${ROCKS_VERSION}
 
