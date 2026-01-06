@@ -5,23 +5,25 @@ USER root
 RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get update -y && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl git unzip jq bash sudo \
-      build-essential pkg-config tar cmake \
+      ca-certificates curl git unzip jq bash sudo gh nano \
+      build-essential pkg-config tar cmake golang-go \
       clang lld lldb gdb ninja-build ccache \
       openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-ARG GO_VERSION=1.23.4
-RUN set -eux; \
-  curl -L "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz; \
-  rm -rf /usr/local/go; \
-  tar -C /usr/local -xzf /tmp/go.tgz; \
-  rm -f /tmp/go.tgz
+# Make Go tooling predictable for both startup scripts and interactive shells
+ENV GOPATH=/home/coder/go
+ENV GOTOOLCHAIN=auto
+ENV PATH=/home/coder/go/bin:$PATH
 
+# Create GOPATH dirs with correct ownership (optional but nice)
+RUN mkdir -p /home/coder/go/{bin,pkg,src} && chown -R coder:coder /home/coder/go
+
+# Optional: for interactive shells (doesn't hurt)
 RUN tee /etc/profile.d/go.sh >/dev/null <<'EOF'
 export GOPATH="/home/coder/go"
-export PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"
 export GOTOOLCHAIN=auto
+export PATH="$GOPATH/bin:$PATH"
 EOF
 
 USER coder

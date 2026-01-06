@@ -2,7 +2,7 @@ FROM ghcr.io/nicfox77/workspace-images/ubuntu-dev-base:latest
 
 USER root
 
-ARG ROCKS_VERSION=10.5.1
+ARG ROCKS_VERSION=10.6.0
 
 RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get update -y && \
@@ -26,7 +26,7 @@ RUN set -eux; \
   rm -rf /tmp/build
 
 RUN tee /etc/profile.d/rocksdb-cgo.sh >/dev/null <<'EOF'
-export ROCKSDB_VERSION="10.5.1"
+export ROCKSDB_VERSION="10.6.0"
 export ROCKSDB_PREFIX="/opt/rocksdb/${ROCKSDB_VERSION}"
 export LD_LIBRARY_PATH="$ROCKSDB_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 export CGO_CFLAGS="-I$ROCKSDB_PREFIX/include"
