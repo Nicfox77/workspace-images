@@ -1,12 +1,13 @@
 FROM codercom/enterprise-base:ubuntu-20251117
 
 USER root
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get update -y && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl git unzip jq bash sudo gh nano \
-      build-essential pkg-config tar cmake golang-go \
+      ca-certificates curl git unzip jq sudo gh nano \
+      build-essential pkg-config cmake golang-go \
       clang lld lldb gdb ninja-build ccache \
       openssh-client \
     && rm -rf /var/lib/apt/lists/*
