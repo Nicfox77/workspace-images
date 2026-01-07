@@ -9,8 +9,16 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
       ca-certificates curl git unzip jq sudo gh nano zsh \
       build-essential pkg-config cmake golang-go \
       clang lld lldb gdb ninja-build ccache ffmpeg \
-      openssh-client \
+      openssh-client gnupg software-properties-common\
     && rm -rf /var/lib/apt/lists/*
+
+# Install terraform
+RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(. /etc/os-release && echo "$VERSION_CODENAME") main" \
+  | sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+RUN sudo apt-get update && \
+  sudo apt-get install -y terraform
 
 # Install zsh-autosuggestions plugin
 RUN git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.zsh/custom}/plugins/zsh-autosuggestions
