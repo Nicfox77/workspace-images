@@ -8,7 +8,7 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get install -y --no-install-recommends \
       ca-certificates curl git unzip jq sudo gh nano zsh \
       build-essential pkg-config cmake golang-go \
-      clang lld lldb gdb ninja-build ccache \
+      clang lld lldb gdb ninja-build ccache ffmpeg \
       openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
