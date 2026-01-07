@@ -29,7 +29,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect image folders (Dockerfile present) + changed folders
+      - name: Detect image folders (Dockerfile present) + changed folders + dependency resolution
         id: detect
         shell: bash
         run: |
@@ -62,6 +62,40 @@ jobs:
             BUILD_ALL="true"
           fi
 
+          # Build dependency graph: each image -> list of images that depend on it
+          declare -A DEPENDS_ON  # image -> list of images that use it as base
+          declare -A BASE_IMAGE  # image -> its base image (if any, relative path)
+          
+          for d in "${ALL_DIRS[@]}"; do
+            if [ -f "$d/Dockerfile" ]; then
+              # Extract the FROM line (first one)
+              FROM_LINE=$(head -n 1 "$d/Dockerfile" | grep -i '^FROM' | head -1)
+              if [ -n "$FROM_LINE" ]; then
+                # Parse the base image name from FROM line
+                BASE=$(echo "$FROM_LINE" | sed -E 's/^FROM[[:space:]]+([^[:space:]]+).*/\1/' | sed 's|:latest||')
+                # Extract just the image name (no registry, no tag)
+                BASE_NAME=$(basename "$BASE")
+                # Map to our local image if it matches
+                for other in "${ALL_DIRS[@]}"; do
+                  if [[ "$BASE" == *"$other"* ]] || [[ "$BASE_NAME" == "$other" ]]; then
+                    BASE_IMAGE["$d"]="$other"
+                    DEPENDS_ON["$other"]+="$d "
+                    break
+                  fi
+                done
+              fi
+            fi
+          done
+
+          # Debug: print dependency info
+          echo "Dependency graph:"
+          for img in "${!BASE_IMAGE[@]}"; do
+            echo "  $img -> ${BASE_IMAGE[$img]}"
+          done
+          for base in "${!DEPENDS_ON[@]}"; do
+            echo "  $base is used by: ${DEPENDS_ON[$base]}"
+          done
+
           if [ "$BUILD_ALL" = "true" ]; then
             SELECTED=("${ALL_DIRS[@]}")
           else
@@ -70,7 +104,7 @@ jobs:
 
             # Fallback if BEFORE is missing
             if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              BEFORE="$(git rev-parse "${AFTER}^" 2>/dev/null || true)"
+              BEFORE="$(git rev-list -n 1 "${AFTER}" 2>/dev/null || true)"
             fi
 
             if [ -z "$BEFORE" ]; then
@@ -86,6 +120,34 @@ jobs:
                   SELECTED+=("$d")
                 fi
               done
+
+              # Now add all images that depend on any selected base images
+              # This is the key fix: when a base image is updated, also build dependents
+              DEPENDENT_NEEDED=()
+              for d in "${SELECTED[@]}"; do
+                if [ -n "${DEPENDS_ON[$d]}" ]; then
+                  echo "Base image $d was changed, adding dependents: ${DEPENDS_ON[$d]}"
+                  for dep in ${DEPENDS_ON[$d]}; do
+                    # Check if this dependent is not already in SELECTED
+                    ALREADY_SELECTED=0
+                    for sel in "${SELECTED[@]}"; do
+                      if [ "$sel" = "$dep" ]; then
+                        ALREADY_SELECTED=1
+                        break
+                      fi
+                    done
+                    if [ $ALREADY_SELECTED -eq 0 ]; then
+                      DEPENDENT_NEEDED+=("$dep")
+                    fi
+                  done
+                fi
+              done
+
+              # Merge selected and dependents
+              if [ ${#DEPENDENT_NEEDED[@]} -gt 0 ]; then
+                SELECTED=("${SELECTED[@]}" "${DEPENDENT_NEEDED[@]}")
+                echo "Added dependents to build: ${DEPENDENT_NEEDED[*]}"
+              fi
             fi
           fi
 
