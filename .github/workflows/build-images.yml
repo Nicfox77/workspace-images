@@ -125,9 +125,13 @@ jobs:
               # This is the key fix: when a base image is updated, also build dependents
               DEPENDENT_NEEDED=()
               for d in "${SELECTED[@]}"; do
-                if [ -n "${DEPENDS_ON[$d]}" ]; then
-                  echo "Base image $d was changed, adding dependents: ${DEPENDS_ON[$d]}"
-                  for dep in ${DEPENDS_ON[$d]}; do
+                DEP_LIST=""
+                if [[ -v "DEPENDS_ON[$d]" ]]; then
+                  DEP_LIST="${DEPENDS_ON[$d]}"
+                fi
+                if [ -n "$DEP_LIST" ]; then
+                  echo "Base image $d was changed, adding dependents: $DEP_LIST"
+                  for dep in $DEP_LIST; do
                     # Check if this dependent is not already in SELECTED
                     ALREADY_SELECTED=0
                     for sel in "${SELECTED[@]}"; do
