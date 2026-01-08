@@ -14,7 +14,32 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
   build-essential pkg-config \
   libsnappy-dev liblz4-dev libzstd-dev zlib1g-dev libbz2-dev \
   libgflags-dev \
+  mosquitto mosquitto-clients \
   && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /etc/mosquitto/conf.d /var/log/mosquitto /var/lib/mosquitto /opt/ps/certs && \
+    chown -R mosquitto:mosquitto /var/log/mosquitto /var/lib/mosquitto
+
+RUN tee /etc/mosquitto/conf.d/perseeva.conf >/dev/null <<'EOF'
+persistence true
+persistence_location /var/lib/mosquitto/
+
+log_dest file /var/log/mosquitto/mosquitto.log
+
+log_timestamp_format %Y-%m-%dT%H:%M:%S
+
+max_inflight_messages 100
+max_queued_messages 0
+
+certfile /opt/ps/certs/managerCertificate.pem
+keyfile /opt/ps/certs/managerKey.key
+require_certificate true
+tls_keyform pem
+
+listener 8883 0.0.0.0
+allow_anonymous true
+protocol mqtt
+EOF
 
 RUN set -eux; \
   cd /tmp; \
