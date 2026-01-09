@@ -22,17 +22,18 @@ RUN mkdir -p /etc/mosquitto/conf.d /var/log/mosquitto /var/lib/mosquitto /opt/ps
 
 RUN tee /etc/mosquitto/conf.d/perseeva.conf >/dev/null <<'EOF'
 persistence true
-persistence_location /var/lib/mosquitto/
+persistence_location /home/coder/mosquitto/data
 
-log_dest file /var/log/mosquitto/mosquitto.log
+log_dest file /home/coder/mosquitto/log/mosquitto.log
 
 log_timestamp_format %Y-%m-%dT%H:%M:%S
 
 max_inflight_messages 100
 max_queued_messages 0
 
-certfile /opt/ps/certs/managerCertificate.pem
-keyfile /opt/ps/certs/managerKey.key
+certfile /home/coder/go/bin/certs/serverCertificate.pem
+keyfile /home/coder/go/bin/certs/serverKey.key
+cafile /home/coder/go/bin/certs/CACertificate.pem
 require_certificate true
 tls_keyform pem
 
