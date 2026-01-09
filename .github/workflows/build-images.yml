@@ -197,6 +197,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore base digest cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .build/base-digests.txt
+          key: base-digests-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            base-digests-${{ github.ref_name }}-
+            base-digests-
+
       - name: Build selected images (base first) and push to GHCR
         shell: bash
         run: |
@@ -221,6 +230,38 @@ jobs:
             fi
           done
           ORDER=("${BASES[@]}" "${REST[@]}")
+          DIGEST_FILE=".build/base-digests.txt"
+          mkdir -p "$(dirname "$DIGEST_FILE")"
+          touch "$DIGEST_FILE"
+
+          declare -A CACHED_DIGESTS
+          while read -r img digest; do
+            if [ -n "$img" ] && [ -n "$digest" ]; then
+              CACHED_DIGESTS["$img"]="$digest"
+            fi
+          done < "$DIGEST_FILE"
+
+          declare -A REMOTE_DIGESTS
+
+          get_base_ref() {
+            awk 'toupper($1) == "FROM" {print $2; exit}' "./$1/Dockerfile"
+          }
+
+          get_remote_digest() {
+            local ref="$1"
+            docker buildx imagetools inspect "$ref" | awk '/Digest:/ {print $2; exit}'
+          }
+
+          update_digest_cache() {
+            local ref="$1"
+            local digest="$2"
+            if [ -z "$digest" ]; then
+              return 0
+            fi
+            awk -v ref="$ref" '$1 != ref' "$DIGEST_FILE" > "${DIGEST_FILE}.tmp"
+            printf "%s %s\n" "$ref" "$digest" >> "${DIGEST_FILE}.tmp"
+            mv "${DIGEST_FILE}.tmp" "$DIGEST_FILE"
+          }
 
           echo "Build order: ${ORDER[*]}"
 
@@ -242,11 +283,38 @@ jobs:
             if [ -n "$RELEASE_TAG" ]; then
               TAG_ARGS+=(--tag "${IMAGE}:${RELEASE_TAG}")
             fi
+            PULL_ARG=()
+            BASE_REF="$(get_base_ref "$f")"
+            if [ -n "$BASE_REF" ]; then
+              BASE_REF="${BASE_REF%%@*}"
+              BASE_NAME="${BASE_REF##*/}"
+              BASE_NAME="${BASE_NAME%%:*}"
+              if [ -f "./${BASE_NAME}/Dockerfile" ]; then
+                REMOTE_DIGEST="${REMOTE_DIGESTS[$BASE_REF]:-}"
+                if [ -z "$REMOTE_DIGEST" ]; then
+                  REMOTE_DIGEST="$(get_remote_digest "$BASE_REF" || true)"
+                  REMOTE_DIGESTS["$BASE_REF"]="$REMOTE_DIGEST"
+                fi
+                CACHED_DIGEST="${CACHED_DIGESTS[$BASE_REF]:-}"
+                if [ -z "$REMOTE_DIGEST" ] || [ -z "$CACHED_DIGEST" ] || [ "$REMOTE_DIGEST" != "$CACHED_DIGEST" ]; then
+                  PULL_ARG=(--pull)
+                fi
+                update_digest_cache "$BASE_REF" "$REMOTE_DIGEST"
+              fi
+            fi
 
             docker buildx build \
               --push \
+              "${PULL_ARG[@]}" \
               "${TAG_ARGS[@]}" \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
               "./${f}"
           done
+
+      - name: Save base digest cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .build/base-digests.txt
+          key: base-digests-${{ github.ref_name }}-${{ github.run_id }}

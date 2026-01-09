@@ -42,20 +42,31 @@ EOF
 
 # Seed default zsh config for new users
 RUN tee /etc/skel/.zshrc >/dev/null <<'EOF'
-# Default prompt: user@host:cwd
-PROMPT='%n@%m:%~%# '
+# Colors for prompt and completion lists
+autoload -U colors && colors
+if command -v dircolors >/dev/null 2>&1; then
+  eval "$(dircolors -b)"
+fi
+
+# Default prompt: user@host:cwd (with color)
+PROMPT='%F{cyan}%n%f@%F{green}%m%f:%F{yellow}%~%f%# '
 
 # Enable zsh-autosuggestions if available
 if [ -r /usr/local/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
   source /usr/local/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+  ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+  ZSH_AUTOSUGGEST_USE_ASYNC=1
 fi
 
 # Quality-of-life options
-setopt AUTO_CD            # "cd" by typing a path
-setopt AUTO_PUSHD         # pushd on directory change
-setopt PUSHD_IGNORE_DUPS  # no duplicate dirs in stack
-setopt EXTENDED_GLOB      # enable advanced globbing
-setopt NO_BEEP            # disable error beeps
+setopt AUTO_CD             # "cd" by typing a path
+setopt AUTO_PUSHD          # pushd on directory change
+setopt PUSHD_IGNORE_DUPS   # no duplicate dirs in stack
+setopt EXTENDED_GLOB       # enable advanced globbing
+setopt NO_BEEP             # disable error beeps
+setopt COMPLETE_IN_WORD    # complete from cursor position
+setopt AUTO_PARAM_SLASH    # add trailing slash after directory completion
 
 # History settings
 HISTSIZE=10000
@@ -73,6 +84,10 @@ zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 zstyle ':completion:*' squeeze-slashes true
 zstyle ':completion:*' use-cache on
 zstyle ':completion:*' cache-path ~/.zcompcache
+zstyle ':completion:*' list-dirs-first true
+zstyle ':completion:*' special-dirs true
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+zstyle ':completion:*:commands' rehash true
 
 # Key bindings for history search
 bindkey '^R' history-incremental-search-backward
