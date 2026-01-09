@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir -p /var/lib/apt/lists/partial && \
     apt-get update -y && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl git unzip jq sudo gh nano zsh \
+      ca-certificates curl git unzip jq sudo gh nano zsh iproute2 \
       build-essential pkg-config cmake golang-go \
       clang lld lldb gdb ninja-build ccache ffmpeg \
       openssh-client gnupg software-properties-common\
