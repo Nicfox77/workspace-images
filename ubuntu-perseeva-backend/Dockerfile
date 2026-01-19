@@ -1,13 +1,9 @@
-# syntax=docker/dockerfile:1.5
-
-ARG ROCKS_VERSION=10.6.2
-
 FROM ghcr.io/nicfox77/workspace-images/ubuntu-perseeva-backend-base:latest
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
-ARG ROCKS_VERSION
+ARG ROCKS_VERSION=10.6.2
 ENV ROCKS_VERSION=${ROCKS_VERSION}
 ENV ROCKSDB_PREFIX=/opt/rocksdb/${ROCKS_VERSION}
 

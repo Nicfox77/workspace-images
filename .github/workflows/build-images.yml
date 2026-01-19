@@ -68,8 +68,8 @@ jobs:
           
           for d in "${ALL_DIRS[@]}"; do
             if [ -f "$d/Dockerfile" ]; then
-              # Extract the FROM line (first one)
-              FROM_LINE=$(head -n 1 "$d/Dockerfile" | grep -i '^FROM' | head -1)
+              # Extract the first FROM line (ignore comments/ARGs/syntax directives)
+              FROM_LINE=$(awk 'toupper($1) == "FROM" {print; exit}' "$d/Dockerfile")
               if [ -n "$FROM_LINE" ]; then
                 # Parse the base image name from FROM line
                 BASE=$(echo "$FROM_LINE" | sed -E 's/^FROM[[:space:]]+([^[:space:]]+).*/\1/' | sed 's|:latest||')
