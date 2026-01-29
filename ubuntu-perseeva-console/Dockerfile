@@ -12,7 +12,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 RUN corepack enable
 
 # Install common React tooling
-RUN npm install -g create-react-app @vitejs/create-vite && \
+RUN npm install -g create-react-app create-vite && \
   npm cache clean --force
 
 USER coder
