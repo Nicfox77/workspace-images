@@ -12,6 +12,8 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
   apt-get install -y --no-install-recommends \
   ca-certificates curl \
   mosquitto mosquitto-clients \
+  ansible \
+  ruby-full \
   && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /etc/mosquitto/conf.d /var/log/mosquitto /var/lib/mosquitto /opt/ps/certs && \
