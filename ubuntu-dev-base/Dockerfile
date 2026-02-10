@@ -20,6 +20,9 @@ RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /u
 RUN sudo apt-get update && \
   sudo apt-get install -y terraform
 
+# Install Open Code CLI
+RUN curl -fsSL https://opencode.ai/install | bash
+
 # Install zsh-autosuggestions plugin (system-wide)
 RUN mkdir -p /usr/local/share/zsh/plugins && \
   git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions \
