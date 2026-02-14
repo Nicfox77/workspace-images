@@ -36,6 +36,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
 # Enable corepack so pnpm/yarn are available when needed
 RUN corepack enable
 
+# Install UV (fast Python package installer) - includes UVX for running Python tools
+# Install system-wide so both root and coder user can access it
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    mv /root/.local/bin/uv /usr/local/bin/uv && \
+    mv /root/.local/bin/uvx /usr/local/bin/uvx && \
+    rm -rf /root/.local
+
 # Install Open Code CLI
 RUN curl -fsSL https://opencode.ai/install | bash
 
