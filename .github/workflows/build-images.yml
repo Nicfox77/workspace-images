@@ -9,6 +9,10 @@ on:
         description: "Build all images (ignores change detection)"
         type: boolean
         default: false
+      specific_images:
+        description: "Build specific images (comma-separated, e.g. 'ubuntu-perseeva-backend,ubuntu-moneymentor')"
+        type: string
+        default: ""
   release:
     types: [published]
 
@@ -53,6 +57,7 @@ jobs:
 
           EVENT="${{ github.event_name }}"
           INPUT_BUILD_ALL="${{ github.event.inputs.build_all || 'false' }}"
+          INPUT_SPECIFIC="${{ github.event.inputs.specific_images || '' }}"
 
           BUILD_ALL="false"
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$INPUT_BUILD_ALL" = "true" ]; then
@@ -60,6 +65,48 @@ jobs:
           fi
           if [ "$EVENT" = "release" ]; then
             BUILD_ALL="true"
+          fi
+
+          # Handle specific images input - early exit with selected images
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$INPUT_SPECIFIC" ]; then
+            echo "Building specific images: $INPUT_SPECIFIC"
+            SELECTED=()
+            # Parse comma-separated list
+            IFS=',' read -ra SPECIFIC_ARRAY <<< "$INPUT_SPECIFIC"
+            for img in "${SPECIFIC_ARRAY[@]}"; do
+              # Trim whitespace
+              img=$(echo "$img" | xargs)
+              # Validate the image exists
+              if [ -f "$img/Dockerfile" ]; then
+                SELECTED+=("$img")
+              else
+                echo "Warning: '$img' is not a valid image folder with Dockerfile, skipping."
+              fi
+            done
+
+            if [ ${#SELECTED[@]} -eq 0 ]; then
+              echo "No valid images specified."
+              echo 'folders=[]' >> "$GITHUB_OUTPUT"
+              echo "any=false" >> "$GITHUB_OUTPUT"
+              echo "build_all=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # Output JSON array
+            JSON='['
+            first=1
+            for d in "${SELECTED[@]}"; do
+              if [ $first -eq 0 ]; then JSON+=','; fi
+              first=0
+              JSON+="\"$d\""
+            done
+            JSON+=']'
+
+            echo "Selected folders: ${SELECTED[*]}"
+            echo "folders=$JSON" >> "$GITHUB_OUTPUT"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            echo "build_all=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           # Build dependency graph: each image -> list of images that depend on it
@@ -84,6 +131,26 @@ jobs:
                   fi
                 done
               fi
+
+              # Also detect COPY --from dependencies (for multi-stage copies from other images)
+              while IFS= read -r COPY_LINE; do
+                if [ -n "$COPY_LINE" ]; then
+                  # Extract image from COPY --from=image
+                  COPY_BASE=$(echo "$COPY_LINE" | sed -E 's/.*--from[[:space:]]*=?[[:space:]]*([^[:space:]]+).*/\1/' | sed 's|:latest||')
+                  if [ -n "$COPY_BASE" ] && [[ "$COPY_BASE" != /* ]]; then
+                    COPY_BASE_NAME=$(basename "$COPY_BASE")
+                    for other in "${ALL_DIRS[@]}"; do
+                      if [[ "$COPY_BASE" == *"$other"* ]] || [[ "$COPY_BASE_NAME" == "$other" ]]; then
+                        # Add dependency (may already exist, that's fine)
+                        if [[ ! " ${DEPENDS_ON[$other]} " =~ " $d " ]]; then
+                          DEPENDS_ON["$other"]+="$d "
+                        fi
+                        break
+                      fi
+                    done
+                  fi
+                fi
+              done < <(grep -E '^[[:space:]]*COPY[[:space:]]+.*--from' "$d/Dockerfile" || true)
             fi
           done
 
@@ -219,11 +286,11 @@ jobs:
           FOLDERS='${{ needs.detect.outputs.folders }}'
           mapfile -t LIST < <(echo "$FOLDERS" | jq -r '.[]')
 
-          # Order: base images first (convention: ends with -base or equals ubuntu-dev-base)
+          # Order: base images first (convention: ends with -base or equals ubuntu-dev-base or ubuntu-rocksdb)
           BASES=()
           REST=()
           for f in "${LIST[@]}"; do
-            if [[ "$f" == *"-base" ]] || [[ "$f" == "ubuntu-dev-base" ]]; then
+            if [[ "$f" == *"-base" ]] || [[ "$f" == "ubuntu-dev-base" ]] || [[ "$f" == "ubuntu-rocksdb" ]]; then
               BASES+=("$f")
             else
               REST+=("$f")
