@@ -14,14 +14,6 @@ RUN mkdir -p /var/lib/apt/lists/partial && \
   xz-utils unzip zip \
   && rm -rf /var/lib/apt/lists/*
 
-# Node.js for React/web tooling
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-  apt-get install -y nodejs && \
-  rm -rf /var/lib/apt/lists/*
-
-# Enable corepack so pnpm/yarn are available when needed.
-RUN corepack enable
-
 # Flutter + Dart
 RUN curl -fsSL "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" -o /tmp/flutter.tar.xz && \
   mkdir -p /opt && \

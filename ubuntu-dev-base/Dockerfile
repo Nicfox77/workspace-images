@@ -20,6 +20,14 @@ RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /u
 RUN sudo apt-get update && \
   sudo apt-get install -y terraform
 
+# Install Node.js v24.x LTS (via NodeSource for modern, predictable version)
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+  apt-get install -y nodejs && \
+  rm -rf /var/lib/apt/lists/*
+
+# Enable corepack so pnpm/yarn are available when needed
+RUN corepack enable
+
 # Install Open Code CLI
 RUN curl -fsSL https://opencode.ai/install | bash
 
