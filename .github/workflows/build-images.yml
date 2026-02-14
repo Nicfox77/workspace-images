@@ -142,8 +142,13 @@ jobs:
                     for other in "${ALL_DIRS[@]}"; do
                       if [[ "$COPY_BASE" == *"$other"* ]] || [[ "$COPY_BASE_NAME" == "$other" ]]; then
                         # Add dependency (may already exist, that's fine)
-                        if [[ ! " ${DEPENDS_ON[$other]} " =~ " $d " ]]; then
-                          DEPENDS_ON["$other"]+="$d "
+                        # Check if key exists and if dependent is not already listed
+                        if [[ -v "DEPENDS_ON[$other]" ]]; then
+                          if [[ ! " ${DEPENDS_ON[$other]} " =~ " $d " ]]; then
+                            DEPENDS_ON["$other"]+="$d "
+                          fi
+                        else
+                          DEPENDS_ON["$other"]="$d "
                         fi
                         break
                       fi
