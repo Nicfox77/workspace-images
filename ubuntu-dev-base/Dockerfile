@@ -6,10 +6,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir -p /var/lib/apt/lists/partial && \
   apt-get update -y && \
   apt-get install -y --no-install-recommends \
-  ca-certificates curl git unzip jq sudo gh nano zsh iproute2 \
+  # Core utilities
+  ca-certificates curl wget git unzip zip jq sudo gh nano zsh iproute2 \
+  # Build tools
   build-essential pkg-config cmake golang-go \
+  # C/C++ development
   clang lld lldb gdb ninja-build ccache ffmpeg ripgrep \
-  openssh-client gnupg software-properties-common\
+  # System utilities
+  openssh-client gnupg software-properties-common \
+  # Python 3 for scripting and development
+  python3 python3-pip python3-venv \
+  # Additional useful development tools
+  tree htop net-tools lsof strace tmux rsync file less vim \
   && rm -rf /var/lib/apt/lists/*
 
 # Install terraform
